@@ -1,0 +1,121 @@
+---
+title: "Test Performance Coureurs"
+author: "Louis P-L"
+date: "21/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, cache = T, warning = F)
+```
+
+```{r libraries, include=F}
+library(nlme)
+library(ggplot2)
+library(lattice)
+```
+
+
+# On récupère les données
+
+## En Webscrapping 
+
+Technique consistant à récupérer les données contenues sur une / des pages internet pour constituer une base de données. L'idéal serait de le faire via python depuis ```procyclingstats.com```.
+
+## Simulation
+
+Pour le reste du document j'ai simulé des données.
+
+
+```{r simulation, include=F}
+df <- data.frame(
+  ident = as.numeric(sort(rep(c(1:10), 11))),
+  temps = rep(2011:2021, 10),
+  points = c(66,85,333,588,440,603,947,424,606,671,527,
+             0,15,30,59,71,60,115,247,69,27,66,
+             1647,1257,1868,614,959,1253,222,169,27,13,1127,
+             14,668,1623,1408,1708,2074,1486,1292,1292,747,743,
+             853,1536,2415,1377,1542,2318,2170,1394,82,33,43,
+             564,566,363,584,590,366,350,257,158,304,71,
+             88,233,743,1262,1002,1641,1280,1616,810,328,834,
+             0,0,0,0,0,0,20,74,118,53,518,
+             0,9,105,340,861,1097,1010,2018,2235,1113,1947,
+             163,747,1001,1198,1139,1167,1232,448,294,538,520)
+)
+df$temps <- df$temps - 2011
+df$ident <- as.factor(df$ident)
+```
+
+
+
+
+```{r desc}
+ggplot(data = df, aes(temps+2011, points, col = ident)) +
+  geom_line() +
+  xlab("Années")
+
+```
+
+
+J'ai récupéré les données de 10 coureurs connus (Cavendish, Alaphilippe,  Bardet, Barguil, Quintana, Swift ...) et j'ai représenté graphiquement leur points par années que j'ai trouvé sur le site. On voit tout de suite qu'il y a une grosse variabilité inter et intra coureurs (ça varie entre les coureurs et en fonction du temps).
+
+# Construction du modèle
+
+Dans un contexte de données répétées j'utilise un modèle linéaire mixte sur lequel on pourra faire des prédictions sur les années suivantes :
+
+$$
+y_{ij} = \beta_0 + \gamma_{0i} + \left( \beta_1 + \gamma_{1i}  \right) \times t_{ij} +  \beta2 \times t_{ij}^2 + \beta3 \times t_{ij}^3
+$$
+
+avec $y_{ij}$ les points à l'année j du coureur i et $t_{ij}$ l'année j du sujet i. On estime les coefficients beta et gamma.
+
+
+```{r modele_mixte, include=F}
+modele_mixte <-lme(points ~ temps + I(temps**2) + I(temps**3), data=df,
+          random=~1+temps |ident,
+          method="ML")
+summary(modele_mixte)
+```
+
+# Graphique
+
+Le premier modèle très simple donne de très bons résultats (les deux graphiques matchent pas mal, on a un bon modèle explicatif)
+
+```{r nvelle_base, include=F}
+df2 <- df
+df2$fitted <- modele_mixte$fitted[,2]
+```
+
+
+```{r spagetthi}
+ggplot(data = df2, aes(temps+2011, fitted, col = ident)) +
+  geom_line() +
+  xlab("Années") +
+  ylab("Points estimés")
+```
+
+j'ai ajusté un modèle avec le temps, le temps au carré et le temps au cube. On voit tout de suite quels coureurs sont rincés (ceux qui ont atteint un maximum) et lesquels sont dans une phase ascendante. 
+
+Pour réaliser des prédictions individuelles il suffit de prolonger les courbes avec les coefficients que l'on a estimés. On peut en déduire un intervalle de confiance.
+
+
+# Prédictions
+
+```{r pred, include=T, echo=T}
+newdata <- data.frame(ident = 9, temps = 12)
+pred<-predict(modele_mixte, newdata)
+as.numeric(pred)
+```
+
+Pour le 9ème coureur (Alaphilippe) à l'année suivante (2022) le modèle prédit 2086.018 points.
+
+
+# Piste d'amélioration 
+
+
+J'ai fait tourné le modèle avec très peu d'informations complémentaires (pas de catégories de coureur, pas d'autocorrélation entre années...), il faut tenir compte de l'année COVID puisque tout le monde perd des points, la variable de point ne peut pas être négative alors il faut envisager une transdomartion en log-normale, le modèle n'est entrainé que sur 10 coureurs etc ...
+
+Il y a un vrai travaille de modélisation à réaliser mais c'est très très faisable.
+
+
+
